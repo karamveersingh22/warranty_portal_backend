@@ -7,10 +7,8 @@ import hmac
 import logging
 import secrets
 from datetime import datetime, timedelta
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 
-import aiosmtplib
+import httpx
 
 from config import get_settings
 
@@ -43,7 +41,7 @@ def get_otp_expiry() -> datetime:
 
 
 async def send_otp_email(to_email: str, otp: str) -> bool:
-    """Send OTP via Gmail SMTP. In development mode, log the OTP locally."""
+    """Send OTP via Brevo Email API. In development mode, log the OTP locally."""
     if settings.environment.lower() in ("development", "local", "dev"):
         logger.info("DEV MODE - OTP for %s: %s", to_email, otp)
         print(f"\n{'=' * 50}")
@@ -51,48 +49,62 @@ async def send_otp_email(to_email: str, otp: str) -> bool:
         print(f"{'=' * 50}\n")
         return True
 
-    if not settings.gmail_user or not settings.gmail_app_password:
-        logger.error("Gmail SMTP credentials are not configured")
+    if not settings.brevo_api_key or not settings.brevo_sender_email:
+        logger.error("Brevo API credentials are not configured")
         return False
 
+    url = "https://api.brevo.com/v3/smtp/email"
+    headers = {
+        "accept": "application/json",
+        "api-key": settings.brevo_api_key,
+        "content-type": "application/json",
+    }
+    
+    text = (
+        f"Your Warranty Portal OTP is: {otp}\n\n"
+        f"This OTP expires in {settings.otp_expiry_minutes} minutes."
+    )
+    html = f"""
+    <html>
+      <body style="font-family: Arial, sans-serif; color: #111827;">
+        <div style="max-width: 560px; margin: 0 auto; padding: 24px;">
+          <h2 style="margin-bottom: 12px;">Warranty Portal</h2>
+          <p>Your one-time password is:</p>
+          <p style="font-size: 32px; font-weight: 700; letter-spacing: 8px; color: #2563eb;">{otp}</p>
+          <p style="color: #4b5563;">This OTP expires in {settings.otp_expiry_minutes} minutes.</p>
+          <p style="color: #6b7280; font-size: 12px; margin-top: 24px;">
+            If you did not request this OTP, you can ignore this email.
+          </p>
+        </div>
+      </body>
+    </html>
+    """
+    
+    payload = {
+        "sender": {
+            "name": settings.brevo_sender_name,
+            "email": settings.brevo_sender_email
+        },
+        "to": [{"email": to_email}],
+        "subject": "Warranty Portal - Your OTP",
+        "htmlContent": html,
+        "textContent": text
+    }
+
     try:
-        message = MIMEMultipart("alternative")
-        message["Subject"] = "Warranty Portal - Your OTP"
-        message["From"] = settings.gmail_user
-        message["To"] = to_email
-
-        text = (
-            f"Your Warranty Portal OTP is: {otp}\n\n"
-            f"This OTP expires in {settings.otp_expiry_minutes} minutes."
-        )
-        html = f"""
-        <html>
-          <body style="font-family: Arial, sans-serif; color: #111827;">
-            <div style="max-width: 560px; margin: 0 auto; padding: 24px;">
-              <h2 style="margin-bottom: 12px;">Warranty Portal</h2>
-              <p>Your one-time password is:</p>
-              <p style="font-size: 32px; font-weight: 700; letter-spacing: 8px; color: #2563eb;">{otp}</p>
-              <p style="color: #4b5563;">This OTP expires in {settings.otp_expiry_minutes} minutes.</p>
-              <p style="color: #6b7280; font-size: 12px; margin-top: 24px;">
-                If you did not request this OTP, you can ignore this email.
-              </p>
-            </div>
-          </body>
-        </html>
-        """
-
-        message.attach(MIMEText(text, "plain"))
-        message.attach(MIMEText(html, "html"))
-
-        smtp = aiosmtplib.SMTP(hostname="smtp.gmail.com", port=587, timeout=15)
-        await smtp.connect()
-        await smtp.starttls()
-        await smtp.login(settings.gmail_user, settings.gmail_app_password.strip())
-        await smtp.send_message(message)
-        await smtp.quit()
-
-        logger.info("OTP sent to %s", to_email)
-        return True
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, headers=headers, json=payload, timeout=15.0)
+            
+        if response.status_code in (200, 201, 202):
+            logger.info("OTP sent to %s via Brevo API", to_email)
+            return True
+        else:
+            logger.error(
+                "Brevo API error for %s. Status: %s, Response: %s", 
+                to_email, response.status_code, response.text
+            )
+            return False
+            
     except Exception as exc:
-        logger.error("Failed to send OTP to %s: %s", to_email, exc)
+        logger.error("Failed to send OTP to %s via Brevo API: %s", to_email, exc)
         return False

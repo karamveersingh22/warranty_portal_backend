@@ -20,9 +20,10 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expiry_hours: int = 24
 
-    # Email OTP (Gmail SMTP)
-    gmail_user: str = ""
-    gmail_app_password: str = ""
+    # Email OTP (Brevo API)
+    brevo_api_key: str = ""
+    brevo_sender_email: str = ""
+    brevo_sender_name: str = "Warranty Portal"
     otp_expiry_minutes: int = 10
     otp_max_resend: int = 3
 
