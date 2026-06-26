@@ -117,13 +117,15 @@ async def _get_piece_or_404(db, piece: str) -> dict:
 
 async def _find_warranty_rule(db, product: dict) -> tuple[dict, str, int]:
     rules_collection = db[COLLECTIONS["warranty_rules"]]
-    item_name = (product.get("item_name") or "").upper()
-    active_rules = await rules_collection.find({"is_active": True}).to_list(None)
+    product_category = (product.get("category") or "").strip()
 
-    for rule in active_rules:
-        category = (rule.get("category") or "").strip()
-        if category and category.upper() in item_name:
-            return rule, category, rule["warranty_months"]
+    if product_category:
+        rule = await rules_collection.find_one({
+            "category": {"$regex": f"^{product_category}$", "$options": "i"},
+            "is_active": True,
+        })
+        if rule:
+            return rule, rule["category"], rule["warranty_months"]
 
     general_rule = await rules_collection.find_one({
         "category": {"$regex": "^general$", "$options": "i"},
@@ -134,7 +136,7 @@ async def _find_warranty_rule(db, product: dict) -> tuple[dict, str, int]:
 
     raise HTTPException(
         status_code=400,
-        detail="No active warranty rule matches this product. Ask an admin to create a warranty rule first.",
+        detail="No active warranty rule matches this product category. Ask an admin to create a warranty rule first.",
     )
 
 
@@ -152,6 +154,11 @@ async def _register_warranty(request: WarrantyRegisterRequest, current_user: dic
         raise HTTPException(status_code=400, detail="This piece is already registered")
 
     warranty_rule, category, warranty_months = await _find_warranty_rule(db, product)
+
+    rule_terms = warranty_rule.get("terms", [])
+    if rule_terms and not request.terms_accepted:
+        raise HTTPException(status_code=400, detail="You must accept the warranty terms before registering")
+
     warranty_start = datetime.utcnow()
     warranty_end = warranty_start + relativedelta(months=warranty_months)
     warranty = calculate_warranty(warranty_start, warranty_end)
@@ -248,6 +255,31 @@ async def _get_warranty_product(piece: str, current_user: dict, db):
         for enquiry in enquiries
     ]
     return response
+
+
+@router.get("/warranty/terms/{piece}")
+@router.get("/api/warranty/terms/{piece}", include_in_schema=False)
+async def get_warranty_terms(
+    piece: str,
+    current_user: dict = Depends(get_current_customer),
+    db=Depends(get_database),
+):
+    """Return the warranty terms for a piece's category so the customer can review before registering."""
+    try:
+        clean = _clean_piece(piece)
+        product = await _get_piece_or_404(db, clean)
+        rule, category, warranty_months = await _find_warranty_rule(db, product)
+        return {
+            "piece": clean,
+            "category": category,
+            "warranty_months": warranty_months,
+            "terms": rule.get("terms", []),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Error in get_warranty_terms: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to fetch warranty terms")
 
 
 @router.post("/warranty/register")

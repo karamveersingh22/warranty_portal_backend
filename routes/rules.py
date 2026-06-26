@@ -16,7 +16,7 @@ from pymongo import ReturnDocument
 from config import COLLECTIONS
 from database import get_database
 from middleware.auth_guard import get_current_admin, get_current_user
-from models import REQUIRED_WARRANTY_MESSAGE_KEYS, WarrantyRuleDocument
+from models import WarrantyRuleDocument
 from schemas import WarrantyRuleCreate, WarrantyRuleUpdate
 
 logger = logging.getLogger(__name__)
@@ -36,7 +36,7 @@ def _rule_response(rule: dict) -> dict:
         "category": rule.get("category"),
         "warranty_months": rule.get("warranty_months"),
         "is_active": rule.get("is_active", True),
-        "messages": rule.get("messages", {}),
+        "terms": rule.get("terms", []),
         "created_at": rule.get("created_at"),
         "updated_at": rule.get("updated_at"),
     }
@@ -48,22 +48,27 @@ def _validate_rule_id(rule_id: str) -> ObjectId:
     return ObjectId(rule_id)
 
 
-def _validate_messages(messages: dict):
-    missing = REQUIRED_WARRANTY_MESSAGE_KEYS.difference(messages.keys())
-    if missing:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Missing warranty message keys: {', '.join(sorted(missing))}",
-        )
-
-
-def _clean_messages(messages: dict) -> dict:
-    _validate_messages(messages)
-    return {key: str(messages[key]).strip() for key in REQUIRED_WARRANTY_MESSAGE_KEYS}
+def _clean_terms(terms: list) -> list:
+    return [t.strip() for t in terms if t and t.strip()]
 
 
 def _category_query(category: str) -> dict:
     return {"category": {"$regex": f"^{re.escape(category)}$", "$options": "i"}}
+
+
+@router.get("/categories")
+async def get_categories(
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_database),
+):
+    """Get distinct product categories from product_pieces for the dropdown."""
+    try:
+        categories = await db[COLLECTIONS["product_pieces"]].distinct("category")
+        categories = sorted([c for c in categories if c and c.strip()])
+        return {"categories": categories}
+    except Exception as e:
+        logger.exception("Error in get_categories: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to fetch categories")
 
 
 @router.get("/")
@@ -117,7 +122,7 @@ async def create_warranty_rule(
             category=category,
             warranty_months=rule.warranty_months,
             is_active=rule.is_active,
-            messages=_clean_messages(rule.messages),
+            terms=_clean_terms(rule.terms),
             created_at=now,
             updated_at=now,
         )
@@ -165,8 +170,8 @@ async def update_warranty_rule(
                 )
             update_data["category"] = category
 
-        if "messages" in update_data:
-            update_data["messages"] = _clean_messages(update_data["messages"])
+        if "terms" in update_data:
+            update_data["terms"] = _clean_terms(update_data["terms"])
 
         update_data["updated_at"] = datetime.utcnow()
         result = await rules_collection.find_one_and_update(

@@ -19,6 +19,27 @@ from models import ProductPieceDocument
 
 logger = logging.getLogger(__name__)
 
+
+import re as _re
+
+_SIZE_PATTERN = _re.compile(r'\d+[Xx]\d+(?:[Xx]\d+)?$')
+
+
+def parse_item_name(raw: str) -> tuple[str, str, str]:
+    """Split an item_name like 'MATTRESS LEO 35X72X5' into (product_type, category, size)."""
+    parts = raw.strip().split()
+    if not parts:
+        return ("", "", "")
+    product_type = parts[0] if parts else ""
+    size = ""
+    if len(parts) >= 2 and _SIZE_PATTERN.search(parts[-1]):
+        size = parts[-1]
+        middle = parts[1:-1]
+    else:
+        middle = parts[1:]
+    category = " ".join(middle) if middle else ""
+    return (product_type, category, size)
+
 ProgressCallback = Callable[[Dict[str, Any]], Optional[Awaitable[None]]]
 
 
@@ -151,10 +172,15 @@ def parse_serials_dbf(file_path: str) -> Tuple[List[dict], List[Dict[str, Any]]]
 
     for row_number, record in enumerate(DBF(file_path, ignore_missing_memofile=True), start=1):
         try:
+            raw_item_name = _read_text_field(record, "item_name")
+            product_type, category, size = parse_item_name(raw_item_name)
             serials.append({
                 "row_number": row_number,
                 "i_code": _read_text_field(record, "i_code"),
-                "item_name": _read_text_field(record, "item_name"),
+                "item_name": raw_item_name,
+                "product_type": product_type,
+                "category": category,
+                "size": size,
                 "piece": _read_text_field(record, "piece"),
                 "bill_date": _dbf_date_to_datetime(_read_field(record, "date")),
                 "bill": _read_text_field(record, "bill"),
@@ -192,6 +218,9 @@ def join_records(
             "piece": serial_record.get("piece", ""),
             "i_code": serial_record.get("i_code", ""),
             "item_name": serial_record.get("item_name", ""),
+            "product_type": serial_record.get("product_type", ""),
+            "category": serial_record.get("category", ""),
+            "size": serial_record.get("size", ""),
             "describe": serial_record.get("describe", ""),
             "bill": booksale_record.get("bill") or serial_record.get("bill") or "",
             "bill_date": bill_date,

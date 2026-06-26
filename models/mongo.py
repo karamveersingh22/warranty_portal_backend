@@ -50,6 +50,8 @@ REQUIRED_WARRANTY_MESSAGE_KEYS = {
     "other",
 }
 
+MAX_WARRANTY_TERMS = 15
+
 
 def normalize_email_value(value: Any) -> Any:
     if value is None:
@@ -178,12 +180,17 @@ class ProductPieceDocument(IndexedDocument):
         IndexModel([("dealer_name", ASCENDING)]),
         IndexModel([("distributor_code", ASCENDING)]),
         IndexModel([("distributor_name", ASCENDING)]),
+        IndexModel([("category", ASCENDING)]),
+        IndexModel([("product_type", ASCENDING)]),
         IndexModel([("piece", TEXT), ("item_name", TEXT)], name="piece_item_text"),
     ]
 
     piece: str = Field(..., min_length=1, max_length=120)
     i_code: str = Field(..., min_length=1, max_length=120)
     item_name: str = Field(..., min_length=1, max_length=250)
+    product_type: str = Field("", max_length=120)
+    category: str = Field("", max_length=120)
+    size: str = Field("", max_length=120)
     describe: Optional[str] = None
     bill: str = Field(..., min_length=1, max_length=120)
     bill_date: datetime
@@ -208,6 +215,9 @@ class ProductPieceDocument(IndexedDocument):
         "piece",
         "i_code",
         "item_name",
+        "product_type",
+        "category",
+        "size",
         "describe",
         "bill",
         "main_key",
@@ -278,19 +288,20 @@ class WarrantyRuleDocument(IndexedDocument):
     category: str = Field(..., min_length=1, max_length=120)
     warranty_months: int = Field(..., ge=1, le=600)
     is_active: bool = True
-    messages: Dict[str, str]
+    terms: List[str] = Field(default_factory=list)
+    messages: Optional[Dict[str, str]] = None
     created_at: datetime
     updated_at: datetime
 
     _normalize_category = field_validator("category", mode="before")(normalize_string_value)
 
-    @field_validator("messages")
+    @field_validator("terms")
     @classmethod
-    def validate_messages(cls, value: Dict[str, str]) -> Dict[str, str]:
-        missing = REQUIRED_WARRANTY_MESSAGE_KEYS.difference(value.keys())
-        if missing:
-            raise ValueError(f"Missing warranty message keys: {', '.join(sorted(missing))}")
-        return value
+    def validate_terms(cls, value: List[str]) -> List[str]:
+        cleaned = [t.strip() for t in value if t and t.strip()]
+        if len(cleaned) > MAX_WARRANTY_TERMS:
+            raise ValueError(f"Maximum {MAX_WARRANTY_TERMS} warranty terms allowed")
+        return cleaned
 
 
 class EnquiryDocument(IndexedDocument):

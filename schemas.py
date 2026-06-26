@@ -122,7 +122,7 @@ class WarrantyRuleBase(BaseModel):
     category: str
     warranty_months: int = Field(..., ge=1)
     is_active: bool = True
-    messages: dict
+    terms: List[str] = []
 
 
 class WarrantyRuleCreate(WarrantyRuleBase):
@@ -133,7 +133,7 @@ class WarrantyRuleUpdate(BaseModel):
     category: Optional[str] = None
     warranty_months: Optional[int] = Field(None, ge=1)
     is_active: Optional[bool] = None
-    messages: Optional[dict] = None
+    terms: Optional[List[str]] = None
 
 
 class WarrantyRuleResponse(WarrantyRuleBase):
@@ -147,6 +147,7 @@ class WarrantyRuleResponse(WarrantyRuleBase):
 
 class WarrantyRegisterRequest(BaseModel):
     piece: str
+    terms_accepted: bool = False
 
 
 class RegisteredProductResponse(BaseModel):
