@@ -22,22 +22,51 @@ logger = logging.getLogger(__name__)
 
 import re as _re
 
-_SIZE_PATTERN = _re.compile(r'\d+[Xx]\d+(?:[Xx]\d+)?$')
+# Matches a trailing size dimension such as:
+#   35X72X5   35X72X5"   70*75*6"   72X74.75X6"   35.5X72X5   5"X6"   3X6X8"
+# Separators may be X / x / *, dimensions may be decimals, an inch mark (")
+# may appear between or after dimensions, and the size may be glued directly
+# to the preceding model name (no space).
+_SIZE_PATTERN = _re.compile(
+    r'\s*('
+    r'\d+(?:\.\d+)?\s*"?\s*[Xx*]\s*'
+    r'\d+(?:\.\d+)?'
+    r'(?:\s*"?\s*[Xx*]\s*\d+(?:\.\d+)?)?'
+    r'\s*"?'
+    r')\s*$'
+)
 
 
 def parse_item_name(raw: str) -> tuple[str, str, str]:
-    """Split an item_name like 'MATTRESS LEO 35X72X5' into (product_type, category, size)."""
-    parts = raw.strip().split()
-    if not parts:
+    """Split an item_name into (product_type, category, size).
+
+    Examples:
+      'MATTRESS LEO 35X72X5'      -> ('MATTRESS', 'LEO', '35X72X5')
+      'MATTRESS LEO+ 70X72X5"'    -> ('MATTRESS', 'LEO+', '70X72X5"')
+      'MATTRESS GOLD 35*72*5'     -> ('MATTRESS', 'GOLD', '35*72*5')
+      'ROYALISTA71.5X70.5X6"'     -> ('', 'ROYALISTA', '71.5X70.5X6"')
+      'MATTRESS CUDDLE EX 70X72X6'-> ('MATTRESS', 'CUDDLE EX', '70X72X6')
+      'SAF-10 35*72*5'            -> ('', 'SAF-10', '35*72*5')
+      'MATTRESS LEO'              -> ('MATTRESS', 'LEO', '')
+    """
+    name = (raw or "").strip()
+    if not name:
         return ("", "", "")
-    product_type = parts[0] if parts else ""
+
     size = ""
-    if len(parts) >= 2 and _SIZE_PATTERN.search(parts[-1]):
-        size = parts[-1]
-        middle = parts[1:-1]
+    match = _SIZE_PATTERN.search(name)
+    if match:
+        size = match.group(1).strip()
+        name = name[:match.start()].strip()
+
+    tokens = name.split()
+    if tokens and tokens[0].upper() == "MATTRESS":
+        product_type = "MATTRESS"
+        category = " ".join(tokens[1:])
     else:
-        middle = parts[1:]
-    category = " ".join(middle) if middle else ""
+        product_type = ""
+        category = name
+
     return (product_type, category, size)
 
 ProgressCallback = Callable[[Dict[str, Any]], Optional[Awaitable[None]]]
