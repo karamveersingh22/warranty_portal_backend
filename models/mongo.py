@@ -278,6 +278,52 @@ class RegisteredProductDocument(IndexedDocument):
         return self
 
 
+class RegistrationStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    DECLINED = "declined"
+
+
+class RegistrationRequestDocument(IndexedDocument):
+    collection_name: ClassVar[str] = "registration_requests"
+    indexes: ClassVar[List[IndexModel]] = [
+        IndexModel([("piece", ASCENDING)]),
+        IndexModel([("customer_id", ASCENDING)]),
+        IndexModel([("customer_email", ASCENDING)]),
+        IndexModel([("status", ASCENDING)]),
+        IndexModel([("requested_at", ASCENDING)]),
+        IndexModel([("status", ASCENDING), ("requested_at", ASCENDING)]),
+    ]
+
+    customer_id: ObjectId
+    customer_email: EmailStr
+    piece_id: ObjectId
+    piece: str = Field(..., min_length=1, max_length=120)
+    item_name: str = Field(..., min_length=1, max_length=250)
+    i_code: str = Field(..., min_length=1, max_length=120)
+    category: str = Field(..., min_length=1, max_length=120)
+    size: str = Field("", max_length=120)
+    bill: str = ""
+    bill_date: datetime
+    warranty_rule_id: Optional[ObjectId] = None
+    warranty_months: int = Field(..., ge=1, le=600)
+    status: RegistrationStatus = RegistrationStatus.PENDING
+    decline_reason: Optional[str] = Field(None, max_length=1000)
+    reviewed_by: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    requested_at: datetime
+
+    _normalize_strings = field_validator(
+        "piece", "item_name", "i_code", "category", "size", "bill", mode="before"
+    )(normalize_string_value)
+    _normalize_email = field_validator("customer_email", mode="before")(normalize_email_value)
+    _validate_customer_id = field_validator("customer_id", mode="before")(validate_required_object_id)
+    _validate_piece_id = field_validator("piece_id", mode="before")(validate_required_object_id)
+    _validate_rule_id = field_validator("warranty_rule_id", mode="before")(
+        validate_optional_object_id
+    )
+
+
 class WarrantyRuleDocument(IndexedDocument):
     collection_name: ClassVar[str] = "warranty_rules"
     indexes: ClassVar[List[IndexModel]] = [
@@ -333,6 +379,27 @@ class EnquiryDocument(IndexedDocument):
     _validate_customer_id = field_validator("customer_id", mode="before")(validate_required_object_id)
 
 
+class SupportContactDocument(IndexedDocument):
+    collection_name: ClassVar[str] = "support_contacts"
+    indexes: ClassVar[List[IndexModel]] = [
+        IndexModel([("is_active", ASCENDING)]),
+        IndexModel([("created_at", ASCENDING)]),
+    ]
+
+    name: str = Field(..., min_length=1, max_length=120)
+    title: str = ""
+    phone: str = ""
+    email: str = ""
+    is_active: bool = True
+    created_at: datetime
+    updated_at: datetime
+
+    _normalize_strings = field_validator(
+        "name", "title", "phone", mode="before"
+    )(normalize_string_value)
+    _normalize_email = field_validator("email", mode="before")(normalize_email_value)
+
+
 class ImportBatchDocument(IndexedDocument):
     collection_name: ClassVar[str] = "import_batches"
     indexes: ClassVar[List[IndexModel]] = [
@@ -361,9 +428,11 @@ DOCUMENT_MODELS = [
     AdminUserDocument,
     OTPSessionDocument,
     ProductPieceDocument,
+    RegistrationRequestDocument,
     RegisteredProductDocument,
     WarrantyRuleDocument,
     EnquiryDocument,
+    SupportContactDocument,
     ImportBatchDocument,
 ]
 

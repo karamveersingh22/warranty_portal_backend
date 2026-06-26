@@ -51,7 +51,11 @@ async def get_admin_stats(
         recent_enquiries = await enquiries.find().sort("created_at", -1).limit(5).to_list(None)
         recent_imports = await import_batches.find().sort("uploaded_at", -1).limit(5).to_list(None)
 
+        registration_requests = db[COLLECTIONS["registration_requests"]]
+        pending_requests = await registration_requests.count_documents({"status": "pending"})
+
         return {
+            "pending_requests": pending_requests,
             "total_pieces": await product_pieces.count_documents({}),
             "total_customers": await customers.count_documents({"profile_complete": True}),
             "total_registered_products": await registered_products.count_documents({}),

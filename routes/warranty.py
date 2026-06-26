@@ -16,7 +16,7 @@ from dateutil.relativedelta import relativedelta
 from config import COLLECTIONS
 from database import get_database
 from middleware.auth_guard import get_current_admin, get_current_customer
-from models import RegisteredProductDocument
+from models import RegisteredProductDocument, RegistrationRequestDocument
 from schemas import WarrantyRegisterRequest
 from services.customers import (
     PROFILE_REQUIRED_MESSAGE,
@@ -153,17 +153,28 @@ async def _register_warranty(request: WarrantyRegisterRequest, current_user: dic
     if existing:
         raise HTTPException(status_code=400, detail="This piece is already registered")
 
+    pending = await db[COLLECTIONS["registration_requests"]].find_one({
+        "piece": piece,
+        "status": "pending",
+    })
+    if pending:
+        if pending.get("customer_id") == customer["_id"]:
+            raise HTTPException(
+                status_code=400,
+                detail="You already have a pending registration request for this piece awaiting admin approval.",
+            )
+        raise HTTPException(
+            status_code=400,
+            detail="A registration request for this piece is already pending review.",
+        )
+
     warranty_rule, category, warranty_months = await _find_warranty_rule(db, product)
 
     rule_terms = warranty_rule.get("terms", [])
     if rule_terms and not request.terms_accepted:
         raise HTTPException(status_code=400, detail="You must accept the warranty terms before registering")
 
-    warranty_start = datetime.utcnow()
-    warranty_end = warranty_start + relativedelta(months=warranty_months)
-    warranty = calculate_warranty(warranty_start, warranty_end)
-
-    registration_doc = RegisteredProductDocument(
+    request_doc = RegistrationRequestDocument(
         customer_id=customer["_id"],
         customer_email=email,
         piece_id=product["_id"],
@@ -171,24 +182,67 @@ async def _register_warranty(request: WarrantyRegisterRequest, current_user: dic
         item_name=product.get("item_name", ""),
         i_code=product.get("i_code", ""),
         category=category,
+        size=product.get("size", ""),
+        bill=product.get("bill", ""),
+        bill_date=product.get("bill_date"),
         warranty_rule_id=warranty_rule["_id"],
-        warranty_start=warranty_start,
-        warranty_end=warranty_end,
         warranty_months=warranty_months,
-        status=warranty["status"],
-        registered_at=warranty_start,
+        status="pending",
+        requested_at=datetime.utcnow(),
     )
-    registration = registration_doc.to_mongo()
+    record = request_doc.to_mongo()
+    result = await db[COLLECTIONS["registration_requests"]].insert_one(record)
 
-    try:
-        result = await db[COLLECTIONS["registered_products"]].insert_one(registration)
-    except DuplicateKeyError:
-        raise HTTPException(status_code=400, detail="This piece is already registered")
-
-    registration["_id"] = result.inserted_id
     return {
-        "message": "Warranty registered successfully",
-        "registration": _registration_response(registration, product),
+        "message": "Your registration request has been submitted and is pending admin approval.",
+        "request": {
+            "id": str(result.inserted_id),
+            "piece": piece,
+            "item_name": product.get("item_name", ""),
+            "category": category,
+            "status": "pending",
+        },
+    }
+
+
+def _request_status_message(req: dict) -> str:
+    item = req.get("item_name") or "product"
+    status = req.get("status")
+    if status == "approved":
+        return f"Your registration of the {item} has been approved."
+    if status == "declined":
+        reason = req.get("decline_reason")
+        base = "Your registration request has been declined, so either fill the correct details or contact the support team."
+        return f"{base} ({reason})" if reason else base
+    return "Your registration request is pending admin approval."
+
+
+async def _get_my_requests(current_user: dict, db):
+    email = normalize_email(current_user.get("email"))
+    customer = await get_customer_by_email(db, email)
+    if not customer:
+        return {"requests": [], "total": 0}
+    requests = await db[COLLECTIONS["registration_requests"]].find({
+        "customer_id": customer["_id"]
+    }).sort("requested_at", -1).to_list(None)
+
+    return {
+        "requests": [
+            {
+                "id": str(req.get("_id")),
+                "piece": req.get("piece"),
+                "item_name": req.get("item_name"),
+                "category": req.get("category"),
+                "size": req.get("size"),
+                "status": req.get("status"),
+                "decline_reason": req.get("decline_reason"),
+                "requested_at": req.get("requested_at"),
+                "reviewed_at": req.get("reviewed_at"),
+                "message": _request_status_message(req),
+            }
+            for req in requests
+        ],
+        "total": len(requests),
     }
 
 
@@ -297,6 +351,22 @@ async def register_warranty(
     except Exception as e:
         logger.exception("Error in register_warranty: %s", str(e))
         raise HTTPException(status_code=500, detail="Failed to register warranty")
+
+
+@router.get("/warranty/my-requests")
+@router.get("/api/warranty/my-requests", include_in_schema=False)
+async def get_my_requests(
+    current_user: dict = Depends(get_current_customer),
+    db=Depends(get_database),
+):
+    """Return the current customer's registration requests with status messages."""
+    try:
+        return await _get_my_requests(current_user, db)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Error in get_my_requests: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to fetch registration requests")
 
 
 @router.get("/warranty/my-products")

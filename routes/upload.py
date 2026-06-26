@@ -241,27 +241,6 @@ async def get_import_job(
     return job
 
 
-@router.delete("/reset-data")
-async def reset_product_data(
-    current_user: dict = Depends(get_current_admin),
-    db=Depends(get_database),
-):
-    """Delete all product pieces, registered products, enquiries, warranty rules, and import batches for a clean re-import."""
-    try:
-        results = {}
-        for col_name in ["product_pieces", "registered_products", "enquiries", "warranty_rules", "import_batches"]:
-            result = await db[COLLECTIONS[col_name]].delete_many({})
-            results[col_name] = result.deleted_count
-
-        return {
-            "message": "All product data has been reset",
-            "deleted": results,
-        }
-    except Exception as e:
-        logger.exception("Error in reset_product_data: %s", str(e))
-        raise HTTPException(status_code=500, detail="Failed to reset data")
-
-
 @router.get("/batches")
 async def get_import_batches(
     current_user: dict = Depends(get_current_admin),

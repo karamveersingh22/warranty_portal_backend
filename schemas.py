@@ -150,6 +150,31 @@ class WarrantyRegisterRequest(BaseModel):
     terms_accepted: bool = False
 
 
+class RegistrationDeclineRequest(BaseModel):
+    reason: Optional[str] = None
+
+
+class FlagDaysUpdate(BaseModel):
+    old_product_flag_days: int = Field(..., ge=1, le=3650)
+
+
+# ==================== SUPPORT ====================
+class SupportContactCreate(BaseModel):
+    name: str
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    title: Optional[str] = None
+    is_active: bool = True
+
+
+class SupportContactUpdate(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    title: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
 class RegisteredProductResponse(BaseModel):
     id: str = Field(alias="_id")
     customer_id: str

@@ -54,8 +54,11 @@ COLLECTIONS = {
     "admin_users": "admin_users",
     "otp_sessions": "otp_sessions",
     "product_pieces": "product_pieces",
+    "registration_requests": "registration_requests",
     "registered_products": "registered_products",
     "warranty_rules": "warranty_rules",
     "enquiries": "enquiries",
     "import_batches": "import_batches",
+    "app_settings": "app_settings",
+    "support_contacts": "support_contacts",
 }
