@@ -60,33 +60,64 @@ async def send_otp_email(to_email: str, otp: str) -> bool:
         "content-type": "application/json",
     }
     
+    expiry_minutes = settings.otp_expiry_minutes
     text = (
-        f"Your Warranty Portal OTP is: {otp}\n\n"
-        f"This OTP expires in {settings.otp_expiry_minutes} minutes."
+        "Safrina Mattress - Warranty Portal\n\n"
+        "Here is your one-time verification code to sign in to the Safrina Mattress "
+        f"Warranty Portal:\n\n"
+        f"    {otp}\n\n"
+        f"This code is valid for {expiry_minutes} minutes. Please do not share it with anyone.\n\n"
+        "If you did not request this code, you can safely ignore this email.\n\n"
+        "- Team Safrina Mattress"
     )
     html = f"""
     <html>
-      <body style="font-family: Arial, sans-serif; color: #111827;">
-        <div style="max-width: 560px; margin: 0 auto; padding: 24px;">
-          <h2 style="margin-bottom: 12px;">Warranty Portal</h2>
-          <p>Your one-time password is:</p>
-          <p style="font-size: 32px; font-weight: 700; letter-spacing: 8px; color: #2563eb;">{otp}</p>
-          <p style="color: #4b5563;">This OTP expires in {settings.otp_expiry_minutes} minutes.</p>
-          <p style="color: #6b7280; font-size: 12px; margin-top: 24px;">
-            If you did not request this OTP, you can ignore this email.
-          </p>
+      <body style="margin:0; padding:0; background-color:#f3f6fb;">
+        <div style="font-family: Arial, Helvetica, sans-serif; color:#1f2533; background-color:#f3f6fb; padding:32px 16px;">
+          <div style="max-width:520px; margin:0 auto; background-color:#ffffff; border:1px solid #dce3ee; border-radius:14px; overflow:hidden;">
+            <div style="background-color:#1d3557; padding:24px 28px;">
+              <div style="font-size:20px; font-weight:700; color:#ffffff; letter-spacing:0.2px;">Safrina Mattress</div>
+              <div style="font-size:11px; font-weight:600; letter-spacing:2px; text-transform:uppercase; color:#e85680; margin-top:4px;">Pamper yourself</div>
+            </div>
+            <div style="padding:28px;">
+              <p style="font-size:15px; margin:0 0 6px; color:#1f2533;">Hi,</p>
+              <p style="font-size:15px; line-height:1.6; margin:0 0 20px; color:#4a5468;">
+                Here is your one-time verification code to sign in to the
+                <strong style="color:#1d3557;">Safrina Mattress Warranty Portal</strong>.
+              </p>
+              <div style="text-align:center; margin:24px 0;">
+                <div style="display:inline-block; background-color:#f3f6fb; border:1px solid #dce3ee; border-radius:12px; padding:16px 28px;">
+                  <span style="font-size:34px; font-weight:700; letter-spacing:10px; color:#1d3557;">{otp}</span>
+                </div>
+              </div>
+              <p style="font-size:14px; line-height:1.6; margin:0 0 6px; color:#4a5468;">
+                This code is valid for <strong>{expiry_minutes} minutes</strong>. For your security, please do not share it with anyone.
+              </p>
+              <p style="font-size:13px; line-height:1.6; color:#677288; margin:18px 0 0;">
+                If you did not request this code, you can safely ignore this email.
+              </p>
+            </div>
+            <div style="border-top:1px solid #eaeff7; padding:18px 28px; background-color:#fbfcfe;">
+              <p style="font-size:12px; color:#677288; margin:0;">
+                This is an automated message from the Safrina Mattress Warranty Portal. Please do not reply.
+              </p>
+              <p style="font-size:12px; color:#94a1b8; margin:6px 0 0;">
+                &copy; {datetime.utcnow().year} Safrina Mattress. All rights reserved.
+              </p>
+            </div>
+          </div>
         </div>
       </body>
     </html>
     """
-    
+
     payload = {
         "sender": {
             "name": settings.brevo_sender_name,
             "email": settings.brevo_sender_email
         },
         "to": [{"email": to_email}],
-        "subject": "Warranty Portal - Your OTP",
+        "subject": f"{otp} is your Safrina Mattress verification code",
         "htmlContent": html,
         "textContent": text
     }
