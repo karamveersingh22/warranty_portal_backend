@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     otp_expiry_minutes: int = 10
     otp_max_resend: int = 3
 
-    # Admin
+    # Admin (single email or comma-separated list of admin emails)
     admin_email: str = "admin@warranty.local"
 
     # Frontend URL
@@ -36,6 +36,19 @@ class Settings(BaseSettings):
     # Environment
     environment: str = "development"
     debug: bool = True
+
+    @property
+    def admin_emails(self) -> list[str]:
+        """Parse `admin_email` into a normalized list of admin emails.
+
+        Supports a single value or a comma-separated list, e.g.
+        `ADMIN_EMAIL=client@gmail.com,owner@gmail.com`.
+        """
+        return [
+            email.lower().strip()
+            for email in self.admin_email.split(",")
+            if email.strip()
+        ]
 
     class Config:
         env_file = ".env"

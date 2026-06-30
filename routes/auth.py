@@ -27,16 +27,15 @@ def normalize_email(email: str) -> str:
 
 
 def resolve_role_from_email(email: str) -> str:
-    configured_admin_email = normalize_email(settings.admin_email)
-    return "admin" if email == configured_admin_email else "customer"
+    return "admin" if normalize_email(email) in settings.admin_emails else "customer"
 
 
 async def get_user_for_role(db, email: str, role: str) -> dict:
     if role == "admin":
-        configured_admin_email = normalize_email(settings.admin_email)
-        if email == configured_admin_email:
+        normalized_email = normalize_email(email)
+        if normalized_email in settings.admin_emails:
             return {
-                "email": configured_admin_email,
+                "email": normalized_email,
                 "role": "admin",
                 "name": "Admin",
             }
