@@ -55,9 +55,9 @@ allowed_origins = [
     "http://127.0.0.1:5173",
     "http://127.0.0.1:3000",
 ]
-frontend_url = settings.frontend_url.rstrip("/") if settings.frontend_url else ""
-if frontend_url and frontend_url not in allowed_origins:
-    allowed_origins.append(frontend_url)
+for frontend_url in settings.frontend_urls:
+    if frontend_url and frontend_url not in allowed_origins:
+        allowed_origins.append(frontend_url)
 
 app.add_middleware(
     CORSMiddleware,

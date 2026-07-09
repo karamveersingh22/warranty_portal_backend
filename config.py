@@ -50,6 +50,20 @@ class Settings(BaseSettings):
             if email.strip()
         ]
 
+    @property
+    def frontend_urls(self) -> list[str]:
+        """Parse `frontend_url` into a list of allowed CORS origins.
+
+        Supports a single value or a comma-separated list, e.g.
+        `FRONTEND_URL=https://safrinamattress.com,https://www.safrinamattress.com`.
+        Trailing slashes are stripped so origins match exactly.
+        """
+        return [
+            url.strip().rstrip("/")
+            for url in self.frontend_url.split(",")
+            if url.strip()
+        ]
+
     class Config:
         env_file = ".env"
         case_sensitive = False
