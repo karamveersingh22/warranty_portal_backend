@@ -142,6 +142,10 @@ async def verify_otp(request: OTPVerifyRequest, db=Depends(get_database)):
 
     await otp_collection.delete_one({"_id": otp_record["_id"]})
 
+    # Admins have no customer profile; treat them as "complete" so profile
+    # enforcement only applies to customers.
+    profile_complete = True if role == "admin" else bool(user_doc and user_doc.get("profile_complete"))
+
     token = create_token(email, role)
     return TokenResponse(
         access_token=token,
@@ -150,6 +154,7 @@ async def verify_otp(request: OTPVerifyRequest, db=Depends(get_database)):
             "email": email,
             "role": role,
             "name": user_doc.get("name") if user_doc else None,
+            "profile_complete": profile_complete,
         },
     )
 
@@ -164,8 +169,11 @@ async def get_current_user_info(current_user: dict = Depends(get_current_user), 
     if role == "admin" and not user_doc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access revoked")
 
+    profile_complete = True if role == "admin" else bool(user_doc and user_doc.get("profile_complete"))
+
     return UserResponse(
         email=email,
         role=role,
         name=user_doc.get("name") if user_doc else None,
+        profile_complete=profile_complete,
     )

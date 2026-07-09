@@ -45,6 +45,7 @@ class UserResponse(BaseModel):
     email: str
     role: str
     name: Optional[str] = None
+    profile_complete: bool = False
 
 
 # ==================== CUSTOMER ====================
