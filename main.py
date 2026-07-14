@@ -68,7 +68,7 @@ app.add_middleware(
 )
 
 
-from routes import admin, auth, customer, dealers, enquiry, pieces, registrations, rules, support, upload, warranty
+from routes import admin, auth, catalogue, customer, dealers, enquiry, pieces, registrations, rules, support, upload, warranty
 
 app.include_router(admin.router)
 app.include_router(auth.router)
@@ -81,6 +81,7 @@ app.include_router(rules.router)
 app.include_router(support.router)
 app.include_router(dealers.router)
 app.include_router(upload.router)
+app.include_router(catalogue.router)
 
 
 @app.get("/health")
