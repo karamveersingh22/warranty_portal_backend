@@ -52,13 +52,17 @@ async def get_current_customer(
     current_user: dict = Depends(get_current_customer_identity),
     db=Depends(get_database),
 ) -> dict:
-    """Customer guard that also enforces mandatory onboarding-term acceptance."""
+    """Block customer operations while per-piece feedback is pending."""
     email = (current_user.get("email") or "").lower().strip()
-    customer = await db["customers"].find_one({"email": email})
-    if customer and customer.get("terms_required") and not customer.get("onboarding_terms_accepted"):
+    pending = await db["registration_requests"].find_one({
+        "customer_email": email,
+        "feedback_required": True,
+        "feedback_submitted": False,
+    })
+    if pending:
         raise HTTPException(
             status_code=403,
-            detail="You must accept all terms and conditions before continuing.",
+            detail=f"Please submit feedback for piece {pending.get('piece')} before continuing.",
         )
     return current_user
 

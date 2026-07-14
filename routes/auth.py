@@ -44,6 +44,16 @@ async def get_user_for_role(db, email: str, role: str) -> dict:
     return await db[COLLECTIONS["customers"]].find_one({"email": email})
 
 
+async def get_feedback_state(db, email: str, role: str) -> tuple[bool, str | None]:
+    if role != "customer":
+        return False, None
+    pending = await db[COLLECTIONS["registration_requests"]].find_one(
+        {"customer_email": email, "feedback_required": True, "feedback_submitted": False},
+        sort=[("requested_at", 1)],
+    )
+    return bool(pending), pending.get("piece") if pending else None
+
+
 @router.post("/send-otp")
 async def send_otp(request: OTPRequest, db=Depends(get_database)):
     """Send a 6-digit OTP and infer customer/admin role from the email."""
@@ -140,39 +150,12 @@ async def verify_otp(request: OTPVerifyRequest, db=Depends(get_database)):
         await otp_collection.delete_one({"_id": otp_record["_id"]})
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized as admin")
 
-    if role == "customer" and not user_doc:
-        # First-time OTP customers must accept onboarding terms before they can
-        # reach Profile. Existing customer documents are deliberately untouched.
-        await db[COLLECTIONS["customers"]].update_one(
-            {"email": email},
-            {
-                "$setOnInsert": {
-                    "name": "",
-                    "email": email,
-                    "phone": "",
-                    "address": "",
-                    "city": "",
-                    "state": "",
-                    "profile_complete": False,
-                    "terms_required": True,
-                    "onboarding_terms_accepted": False,
-                    "created_at": now,
-                    "updated_at": now,
-                }
-            },
-            upsert=True,
-        )
-        user_doc = await get_user_for_role(db, email, role)
-
     await otp_collection.delete_one({"_id": otp_record["_id"]})
 
     # Admins have no customer profile; treat them as "complete" so profile
     # enforcement only applies to customers.
     profile_complete = True if role == "admin" else bool(user_doc and user_doc.get("profile_complete"))
-    terms_required = False if role == "admin" else bool(user_doc and user_doc.get("terms_required", False))
-    terms_accepted = True if role == "admin" else bool(
-        not terms_required or user_doc.get("onboarding_terms_accepted", False)
-    ) if user_doc else True
+    feedback_required, pending_feedback_piece = await get_feedback_state(db, email, role)
 
     token = create_token(email, role)
     return TokenResponse(
@@ -183,8 +166,8 @@ async def verify_otp(request: OTPVerifyRequest, db=Depends(get_database)):
             "role": role,
             "name": user_doc.get("name") if user_doc else None,
             "profile_complete": profile_complete,
-            "terms_required": terms_required,
-            "onboarding_terms_accepted": terms_accepted,
+            "feedback_required": feedback_required,
+            "pending_feedback_piece": pending_feedback_piece,
         },
     )
 
@@ -200,16 +183,13 @@ async def get_current_user_info(current_user: dict = Depends(get_current_user), 
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access revoked")
 
     profile_complete = True if role == "admin" else bool(user_doc and user_doc.get("profile_complete"))
-    terms_required = False if role == "admin" else bool(user_doc and user_doc.get("terms_required", False))
-    terms_accepted = True if role == "admin" else bool(
-        not terms_required or user_doc.get("onboarding_terms_accepted", False)
-    ) if user_doc else True
+    feedback_required, pending_feedback_piece = await get_feedback_state(db, email, role)
 
     return UserResponse(
         email=email,
         role=role,
         name=user_doc.get("name") if user_doc else None,
         profile_complete=profile_complete,
-        terms_required=terms_required,
-        onboarding_terms_accepted=terms_accepted,
+        feedback_required=feedback_required,
+        pending_feedback_piece=pending_feedback_piece,
     )

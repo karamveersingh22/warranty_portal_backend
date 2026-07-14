@@ -200,6 +200,8 @@ async def _register_warranty(request: WarrantyRegisterRequest, current_user: dic
         warranty_rule_id=warranty_rule["_id"],
         warranty_months=warranty_months,
         status="pending",
+        feedback_required=True,
+        feedback_submitted=False,
         requested_at=datetime.utcnow(),
     )
     record = request_doc.to_mongo()
@@ -213,6 +215,8 @@ async def _register_warranty(request: WarrantyRegisterRequest, current_user: dic
             "item_name": product.get("item_name", ""),
             "category": category,
             "status": "pending",
+            "feedback_required": True,
+            "feedback_submitted": False,
         },
     }
 

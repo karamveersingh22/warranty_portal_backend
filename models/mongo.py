@@ -124,10 +124,7 @@ class CustomerDocument(IndexedDocument):
     city: str = Field(..., min_length=1, max_length=120)
     state: str = Field(..., min_length=1, max_length=120)
     profile_complete: bool = False
-    terms_required: bool = False
-    onboarding_terms_accepted: bool = True
-    onboarding_terms_accepted_at: Optional[datetime] = None
-    onboarding_terms_snapshot: List[Dict[str, Any]] = Field(default_factory=list)
+    feedback_submitted: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -324,6 +321,8 @@ class RegistrationRequestDocument(IndexedDocument):
     reviewed_by: Optional[str] = None
     reviewed_at: Optional[datetime] = None
     requested_at: datetime
+    feedback_required: bool = False
+    feedback_submitted: bool = False
 
     _normalize_strings = field_validator(
         "piece", "item_name", "i_code", "category", "size", "bill", "dealer_bill_number", mode="before"
@@ -435,19 +434,27 @@ class ImportBatchDocument(IndexedDocument):
     )
 
 
-class OnboardingTermDocument(IndexedDocument):
-    collection_name: ClassVar[str] = "onboarding_terms"
+class CustomerFeedbackDocument(IndexedDocument):
+    collection_name: ClassVar[str] = "customer_feedbacks"
     indexes: ClassVar[List[IndexModel]] = [
-        IndexModel([("order", ASCENDING)], unique=True),
-        IndexModel([("created_at", ASCENDING)]),
+        IndexModel([("customer_id", ASCENDING), ("piece", ASCENDING)], unique=True),
+        IndexModel([("piece", ASCENDING)]),
+        IndexModel([("customer_email", ASCENDING)]),
+        IndexModel([("submitted_at", ASCENDING)]),
     ]
 
-    text: str = Field(..., min_length=1, max_length=2000)
-    order: int = Field(..., ge=1)
-    created_at: datetime
-    updated_at: datetime
+    customer_id: ObjectId
+    customer_email: EmailStr
+    customer_name: str = ""
+    piece: str = Field(..., min_length=1, max_length=120)
+    item_name: str = ""
+    dealer_name: str = ""
+    answers: Dict[str, Any]
+    submitted_at: datetime
 
-    _normalize_text = field_validator("text", mode="before")(normalize_string_value)
+    _normalize_strings = field_validator("customer_name", "piece", "item_name", "dealer_name", mode="before")(normalize_string_value)
+    _normalize_email = field_validator("customer_email", mode="before")(normalize_email_value)
+    _validate_customer_id = field_validator("customer_id", mode="before")(validate_required_object_id)
 
 
 DOCUMENT_MODELS = [
@@ -461,7 +468,7 @@ DOCUMENT_MODELS = [
     EnquiryDocument,
     SupportContactDocument,
     ImportBatchDocument,
-    OnboardingTermDocument,
+    CustomerFeedbackDocument,
 ]
 
 

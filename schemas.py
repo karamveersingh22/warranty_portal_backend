@@ -4,7 +4,7 @@ Pydantic models for request/response validation and MongoDB documents.
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from datetime import date, datetime, timedelta, timezone
-from typing import Optional, List
+from typing import Optional, List, Literal
 from enum import Enum
 
 
@@ -46,8 +46,8 @@ class UserResponse(BaseModel):
     role: str
     name: Optional[str] = None
     profile_complete: bool = False
-    terms_required: bool = False
-    onboarding_terms_accepted: bool = True
+    feedback_required: bool = False
+    pending_feedback_piece: Optional[str] = None
 
 
 # ==================== CUSTOMER ====================
@@ -180,20 +180,32 @@ class FlagDaysUpdate(BaseModel):
     old_product_flag_days: int = Field(..., ge=1, le=3650)
 
 
-class OnboardingTermCreate(BaseModel):
-    text: str = Field(..., min_length=1, max_length=2000)
+RatingChoice = Literal["Very Good", "Good", "Fair", "Poor"]
+YesNoChoice = Literal["Yes", "No"]
+SourceChoice = Literal["Shop Keeper", "Advertisement", "Retailer", "Visit at Shop"]
 
 
-class OnboardingTermUpdate(BaseModel):
-    text: str = Field(..., min_length=1, max_length=2000)
+class CustomerFeedbackCreate(BaseModel):
+    piece: str = Field(..., min_length=1, max_length=120)
+    q1: RatingChoice
+    q2: SourceChoice
+    q3: RatingChoice
+    q4: YesNoChoice
+    q5: RatingChoice
+    q6: RatingChoice
+    q7: RatingChoice
+    q8: RatingChoice
+    q9: RatingChoice
+    q10: YesNoChoice
+    q11: YesNoChoice
+    q12: Optional[str] = Field(None, max_length=3000)
+    q13: Optional[str] = Field(None, max_length=3000)
+    q14: Optional[str] = Field(None, max_length=3000)
 
-
-class OnboardingTermsReorder(BaseModel):
-    term_ids: List[str] = Field(..., min_length=1)
-
-
-class OnboardingTermsAccept(BaseModel):
-    term_ids: List[str] = Field(..., min_length=1)
+    @field_validator("piece", "q12", "q13", "q14")
+    @classmethod
+    def clean_feedback_text(cls, value):
+        return value.strip() if isinstance(value, str) else value
 
 
 # ==================== SUPPORT ====================

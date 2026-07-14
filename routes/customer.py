@@ -63,8 +63,7 @@ async def register_customer(
             "city": registration.city.strip(),
             "state": (registration.state or "").strip(),
             "profile_complete": True,
-            "terms_required": True,
-            "onboarding_terms_accepted": False,
+            "feedback_submitted": False,
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow(),
         }
@@ -125,11 +124,7 @@ async def create_or_update_profile(
             {"email": email},
             {
                 "$set": customer_data,
-                "$setOnInsert": {
-                    "created_at": datetime.utcnow(),
-                    "terms_required": True,
-                    "onboarding_terms_accepted": False,
-                },
+                "$setOnInsert": {"created_at": datetime.utcnow()},
             },
             return_document=True,
             upsert=True
