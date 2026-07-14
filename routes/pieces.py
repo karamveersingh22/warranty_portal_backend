@@ -16,6 +16,7 @@ from config import COLLECTIONS
 from database import get_database
 from middleware.auth_guard import get_current_admin, get_current_user
 from services.warranty_calculator import calculate_warranty
+from services.warranty_eligibility import INELIGIBLE_MESSAGE, is_warranty_eligible
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["pieces"])
@@ -253,6 +254,8 @@ async def _lookup_piece(piece: str, current_user: dict, db) -> Dict[str, Any]:
     response = {
         "piece": clean_piece,
         "is_registered": registration is not None,
+        "warranty_eligible": is_warranty_eligible(product),
+        "warranty_eligibility_message": None if is_warranty_eligible(product) else INELIGIBLE_MESSAGE,
         "registered_by": registration.get("customer_email") if registration and current_user.get("role") == "admin" else None,
         "product_information": _product_info(product, include_company_traceability=current_user.get("role") == "admin"),
         "dealer_information": _dealer_info(product),

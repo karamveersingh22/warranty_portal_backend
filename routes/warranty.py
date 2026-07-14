@@ -25,6 +25,7 @@ from services.customers import (
     normalize_email,
 )
 from services.warranty_calculator import calculate_warranty
+from services.warranty_eligibility import INELIGIBLE_MESSAGE, is_warranty_eligible
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["warranty"])
@@ -148,6 +149,8 @@ async def _register_warranty(request: WarrantyRegisterRequest, current_user: dic
     dealer_bill_date = datetime.combine(request.dealer_bill_date, time.min)
 
     product = await _get_piece_or_404(db, piece)
+    if not is_warranty_eligible(product):
+        raise HTTPException(status_code=400, detail=INELIGIBLE_MESSAGE)
     customer = await _get_customer_or_profile_required(db, email)
     company_dispatch_date = product.get("bill_date")
     if company_dispatch_date and dealer_bill_date < company_dispatch_date:
@@ -333,6 +336,8 @@ async def get_warranty_terms(
     try:
         clean = _clean_piece(piece)
         product = await _get_piece_or_404(db, clean)
+        if not is_warranty_eligible(product):
+            raise HTTPException(status_code=400, detail=INELIGIBLE_MESSAGE)
         rule, category, warranty_months = await _find_warranty_rule(db, product)
         return {
             "piece": clean,

@@ -22,6 +22,7 @@ from datetime import datetime
 from bson import ObjectId
 from pymongo import ReturnDocument
 import logging
+from services.warranty_eligibility import is_warranty_eligible
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/enquiry", tags=["enquiry"])
@@ -62,6 +63,8 @@ def _enquiry_response(enquiry: dict, include_description: bool = True, customer:
         "customer": _customer_summary(customer) if customer else enquiry.get("customer"),
         "piece": enquiry.get("piece"),
         "item_name": enquiry.get("item_name"),
+        "is_registered_product": enquiry.get("is_registered_product", True),
+        "manual_handling_required": enquiry.get("manual_handling_required", False),
         "issue_type": enquiry.get("issue_type"),
         "status": enquiry.get("status"),
         "admin_note": enquiry.get("admin_note"),
@@ -92,17 +95,22 @@ async def create_enquiry(
         if not enquiry.description.strip():
             raise HTTPException(status_code=400, detail="Description is required")
 
-        # Verify piece is registered by this customer
-        registered_collection = db[COLLECTIONS["registered_products"]]
-        registration = await registered_collection.find_one({
-            "customer_id": customer["_id"],
-            "piece": clean_piece
-        })
+        product = await db[COLLECTIONS["product_pieces"]].find_one({"piece": clean_piece})
+        if not product:
+            raise HTTPException(status_code=404, detail="Piece not found. Check the piece number and try again.")
 
-        if not registration:
+        # Registered products can only be used by their owning customer.
+        registered_collection = db[COLLECTIONS["registered_products"]]
+        registration = await registered_collection.find_one({"piece": clean_piece})
+        if registration and registration.get("customer_id") != customer["_id"]:
             raise HTTPException(
                 status_code=400,
-                detail="Piece not registered. Register warranty first."
+                detail="This piece is registered to another customer."
+            )
+        if not registration and is_warranty_eligible(product):
+            raise HTTPException(
+                status_code=400,
+                detail="This product is eligible for online warranty. Register the product before raising an enquiry.",
             )
 
         # Create enquiry record
@@ -110,7 +118,9 @@ async def create_enquiry(
             "customer_id": customer["_id"],
             "customer_email": email,
             "piece": clean_piece,
-            "item_name": registration.get("item_name") or enquiry.item_name.strip(),
+            "item_name": (registration or {}).get("item_name") or product.get("item_name") or enquiry.item_name.strip(),
+            "is_registered_product": registration is not None,
+            "manual_handling_required": registration is None,
             "issue_type": _issue_label(enquiry.issue_type),
             "description": enquiry.description.strip(),
             "status": "pending",
