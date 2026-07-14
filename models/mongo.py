@@ -245,6 +245,8 @@ class RegisteredProductDocument(IndexedDocument):
         IndexModel([("status", ASCENDING)]),
         IndexModel([("registered_at", ASCENDING)]),
         IndexModel([("warranty_end", ASCENDING)]),
+        IndexModel([("dealer_bill_number", ASCENDING)]),
+        IndexModel([("dealer_bill_date", ASCENDING)]),
     ]
 
     customer_id: ObjectId
@@ -254,6 +256,8 @@ class RegisteredProductDocument(IndexedDocument):
     item_name: str = Field(..., min_length=1, max_length=250)
     i_code: str = Field(..., min_length=1, max_length=120)
     category: str = Field(..., min_length=1, max_length=120)
+    dealer_bill_number: str = Field("", max_length=120)
+    dealer_bill_date: Optional[datetime] = None
     warranty_rule_id: Optional[ObjectId] = None
     warranty_start: datetime
     warranty_end: datetime
@@ -262,7 +266,7 @@ class RegisteredProductDocument(IndexedDocument):
     registered_at: datetime
 
     _normalize_strings = field_validator(
-        "piece", "item_name", "i_code", "category", mode="before"
+        "piece", "item_name", "i_code", "category", "dealer_bill_number", mode="before"
     )(normalize_string_value)
     _normalize_email = field_validator("customer_email", mode="before")(normalize_email_value)
     _validate_customer_id = field_validator("customer_id", mode="before")(validate_required_object_id)
@@ -293,6 +297,8 @@ class RegistrationRequestDocument(IndexedDocument):
         IndexModel([("status", ASCENDING)]),
         IndexModel([("requested_at", ASCENDING)]),
         IndexModel([("status", ASCENDING), ("requested_at", ASCENDING)]),
+        IndexModel([("dealer_bill_number", ASCENDING)]),
+        IndexModel([("dealer_bill_date", ASCENDING)]),
     ]
 
     customer_id: ObjectId
@@ -305,6 +311,8 @@ class RegistrationRequestDocument(IndexedDocument):
     size: str = Field("", max_length=120)
     bill: str = ""
     bill_date: datetime
+    dealer_bill_number: str = Field("", max_length=120)
+    dealer_bill_date: Optional[datetime] = None
     warranty_rule_id: Optional[ObjectId] = None
     warranty_months: int = Field(..., ge=1, le=600)
     status: RegistrationStatus = RegistrationStatus.PENDING
@@ -314,7 +322,7 @@ class RegistrationRequestDocument(IndexedDocument):
     requested_at: datetime
 
     _normalize_strings = field_validator(
-        "piece", "item_name", "i_code", "category", "size", "bill", mode="before"
+        "piece", "item_name", "i_code", "category", "size", "bill", "dealer_bill_number", mode="before"
     )(normalize_string_value)
     _normalize_email = field_validator("customer_email", mode="before")(normalize_email_value)
     _validate_customer_id = field_validator("customer_id", mode="before")(validate_required_object_id)

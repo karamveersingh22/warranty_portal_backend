@@ -2,8 +2,8 @@
 Pydantic models for request/response validation and MongoDB documents.
 """
 
-from pydantic import BaseModel, EmailStr, Field
-from datetime import datetime
+from pydantic import BaseModel, EmailStr, Field, field_validator
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional, List
 from enum import Enum
 
@@ -148,7 +148,26 @@ class WarrantyRuleResponse(WarrantyRuleBase):
 
 class WarrantyRegisterRequest(BaseModel):
     piece: str
+    dealer_bill_number: str = Field(..., min_length=1, max_length=120)
+    dealer_bill_date: date
     terms_accepted: bool = False
+
+    @field_validator("piece", "dealer_bill_number")
+    @classmethod
+    def clean_required_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Field is required")
+        return value
+
+    @field_validator("dealer_bill_date")
+    @classmethod
+    def dealer_bill_date_must_be_today(cls, value: date) -> date:
+        india_timezone = timezone(timedelta(hours=5, minutes=30))
+        business_today = datetime.now(india_timezone).date()
+        if value != business_today:
+            raise ValueError("Dealer bill date must be today's date")
+        return value
 
 
 class RegistrationDeclineRequest(BaseModel):

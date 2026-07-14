@@ -254,6 +254,8 @@ async def get_customer_detail(
                     "item_name": product.get("item_name"),
                     "i_code": product.get("i_code"),
                     "category": product.get("category"),
+                    "dealer_bill_number": product.get("dealer_bill_number"),
+                    "dealer_bill_date": product.get("dealer_bill_date"),
                     "warranty_start": product.get("warranty_start"),
                     "warranty_end": product.get("warranty_end"),
                     "warranty_months": product.get("warranty_months"),

@@ -2,8 +2,9 @@
 Admin registration-request review routes: /api/registrations
 
 Customers submit registration requests (see routes/warranty.py). Admins review
-each request - inspecting buyer, dealer, distributor, item, and bill details,
-plus how old the product is (registration date minus bill date) - then approve
+each request - inspecting buyer, dealer, distributor, item, company dispatch,
+and customer-supplied dealer invoice details. Product age is measured from the
+dealer invoice date to the request date.
 (creating the active warranty) or decline (notifying the buyer).
 """
 
@@ -63,7 +64,7 @@ async def _request_detail(db, req: dict, flag_days: int) -> Dict[str, Any]:
         or await db[COLLECTIONS["product_pieces"]].find_one({"piece": req.get("piece")})
     product = product or {}
 
-    age = _age(req.get("requested_at"), req.get("bill_date"), flag_days)
+    age = _age(req.get("requested_at"), req.get("dealer_bill_date"), flag_days)
 
     return {
         "id": str(req.get("_id")),
@@ -104,10 +105,14 @@ async def _request_detail(db, req: dict, flag_days: int) -> Dict[str, Any]:
             "category": req.get("category"),
             "size": req.get("size"),
         },
-        "bill": {
-            "bill": req.get("bill"),
-            "bill_date": req.get("bill_date"),
+        "dealer_bill": {
+            "bill_number": req.get("dealer_bill_number"),
+            "bill_date": req.get("dealer_bill_date"),
             "registration_date": req.get("requested_at"),
+        },
+        "company_dispatch": {
+            "bill_number": req.get("bill") or product.get("bill"),
+            "bill_date": req.get("bill_date") or product.get("bill_date"),
         },
     }
 
@@ -198,7 +203,14 @@ async def approve_registration_request(
             raise HTTPException(status_code=400, detail="This piece is already registered. Request marked declined.")
 
         warranty_months = req.get("warranty_months")
-        warranty_start = datetime.utcnow()
+        dealer_bill_number = (req.get("dealer_bill_number") or "").strip()
+        dealer_bill_date = req.get("dealer_bill_date")
+        if not dealer_bill_number or not dealer_bill_date:
+            raise HTTPException(
+                status_code=400,
+                detail="Dealer bill number and dealer bill date are required. Decline this legacy request and ask the customer to submit it again.",
+            )
+        warranty_start = dealer_bill_date
         warranty_end = warranty_start + relativedelta(months=warranty_months)
         warranty = calculate_warranty(warranty_start, warranty_end)
 
@@ -210,12 +222,14 @@ async def approve_registration_request(
             item_name=req.get("item_name", ""),
             i_code=req.get("i_code", ""),
             category=req.get("category", ""),
+            dealer_bill_number=dealer_bill_number,
+            dealer_bill_date=dealer_bill_date,
             warranty_rule_id=req.get("warranty_rule_id"),
             warranty_start=warranty_start,
             warranty_end=warranty_end,
             warranty_months=warranty_months,
             status=warranty["status"],
-            registered_at=warranty_start,
+            registered_at=datetime.utcnow(),
         )
 
         try:

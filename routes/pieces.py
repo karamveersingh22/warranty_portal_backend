@@ -35,8 +35,8 @@ def _address_line(*parts: Optional[str]) -> str:
     return " ".join(part.strip() for part in parts if isinstance(part, str) and part.strip())
 
 
-def _product_info(product: dict) -> Dict[str, Any]:
-    return {
+def _product_info(product: dict, include_company_traceability: bool = True) -> Dict[str, Any]:
+    info = {
         "piece": product.get("piece"),
         "i_code": product.get("i_code"),
         "item_name": product.get("item_name"),
@@ -44,13 +44,17 @@ def _product_info(product: dict) -> Dict[str, Any]:
         "category": product.get("category", ""),
         "size": product.get("size", ""),
         "describe": product.get("describe"),
-        "bill": product.get("bill"),
-        "bill_date": product.get("bill_date"),
-        "main_key": product.get("main_key"),
-        "has_booksale_match": product.get("has_booksale_match", False),
         "created_at": product.get("created_at"),
         "updated_at": product.get("updated_at"),
     }
+    if include_company_traceability:
+        info.update({
+            "bill": product.get("bill"),
+            "bill_date": product.get("bill_date"),
+            "main_key": product.get("main_key"),
+            "has_booksale_match": product.get("has_booksale_match", False),
+        })
+    return info
 
 
 def _distributor_info(product: dict) -> Dict[str, Any]:
@@ -114,6 +118,8 @@ def _warranty_info(registration: Optional[dict]) -> Optional[Dict[str, Any]]:
         "item_name": registration.get("item_name"),
         "i_code": registration.get("i_code"),
         "category": registration.get("category"),
+        "dealer_bill_number": registration.get("dealer_bill_number"),
+        "dealer_bill_date": registration.get("dealer_bill_date"),
         "warranty_rule_id": _object_id_to_str(registration.get("warranty_rule_id")),
         "warranty_start": registration.get("warranty_start"),
         "warranty_end": registration.get("warranty_end"),
@@ -244,14 +250,16 @@ async def _lookup_piece(piece: str, current_user: dict, db) -> Dict[str, Any]:
     product = await _find_product_or_404(db, clean_piece)
     registration = await db[COLLECTIONS["registered_products"]].find_one({"piece": clean_piece})
 
-    return {
+    response = {
         "piece": clean_piece,
         "is_registered": registration is not None,
-        "registered_by": registration.get("customer_email") if registration else None,
-        "product_information": _product_info(product),
-        "distributor_information": _distributor_info(product),
+        "registered_by": registration.get("customer_email") if registration and current_user.get("role") == "admin" else None,
+        "product_information": _product_info(product, include_company_traceability=current_user.get("role") == "admin"),
         "dealer_information": _dealer_info(product),
     }
+    if current_user.get("role") == "admin":
+        response["distributor_information"] = _distributor_info(product)
+    return response
 
 
 async def _trace_piece(piece: str, current_user: dict, db) -> Dict[str, Any]:

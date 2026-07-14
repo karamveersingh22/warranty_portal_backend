@@ -4,7 +4,7 @@ Warranty registration routes.
 Exposes exact /warranty endpoints and keeps existing /api/warranty aliases.
 """
 
-from datetime import datetime
+from datetime import datetime, time
 import logging
 from typing import Any, Dict, Optional
 
@@ -69,13 +69,11 @@ def _registration_response(registration: dict, product: Optional[dict] = None) -
             "i_code": product.get("i_code"),
             "item_name": product.get("item_name"),
             "describe": product.get("describe"),
-            "bill": product.get("bill"),
-            "bill_date": product.get("bill_date"),
+            "dealer_bill_number": registration.get("dealer_bill_number"),
+            "dealer_bill_date": registration.get("dealer_bill_date"),
             "dealer_name": product.get("dealer_name"),
             "dealer_city": product.get("dealer_city"),
             "dealer_state": product.get("dealer_state"),
-            "distributor_name": product.get("distributor_name"),
-            "distributor_city": product.get("distributor_city"),
         }
 
     return {
@@ -90,6 +88,8 @@ def _registration_response(registration: dict, product: Optional[dict] = None) -
         "warranty_start": registration.get("warranty_start"),
         "warranty_end": registration.get("warranty_end"),
         "warranty_months": registration.get("warranty_months"),
+        "dealer_bill_number": registration.get("dealer_bill_number"),
+        "dealer_bill_date": registration.get("dealer_bill_date"),
         "registered_at": registration.get("registered_at"),
         "stored_status": registration.get("status"),
         "status": progress["status"],
@@ -145,9 +145,16 @@ async def _register_warranty(request: WarrantyRegisterRequest, current_user: dic
     piece = _clean_piece(request.piece)
     if not piece:
         raise HTTPException(status_code=400, detail="Piece number is required")
+    dealer_bill_date = datetime.combine(request.dealer_bill_date, time.min)
 
     product = await _get_piece_or_404(db, piece)
     customer = await _get_customer_or_profile_required(db, email)
+    company_dispatch_date = product.get("bill_date")
+    if company_dispatch_date and dealer_bill_date < company_dispatch_date:
+        raise HTTPException(
+            status_code=400,
+            detail="Dealer bill date cannot be earlier than the company dispatch date for this product. Check the bill date and try again.",
+        )
 
     existing = await db[COLLECTIONS["registered_products"]].find_one({"piece": piece})
     if existing:
@@ -185,6 +192,8 @@ async def _register_warranty(request: WarrantyRegisterRequest, current_user: dic
         size=product.get("size", ""),
         bill=product.get("bill", ""),
         bill_date=product.get("bill_date"),
+        dealer_bill_number=request.dealer_bill_number,
+        dealer_bill_date=dealer_bill_date,
         warranty_rule_id=warranty_rule["_id"],
         warranty_months=warranty_months,
         status="pending",
@@ -235,6 +244,8 @@ async def _get_my_requests(current_user: dict, db):
                 "category": req.get("category"),
                 "size": req.get("size"),
                 "status": req.get("status"),
+                "dealer_bill_number": req.get("dealer_bill_number"),
+                "dealer_bill_date": req.get("dealer_bill_date"),
                 "decline_reason": req.get("decline_reason"),
                 "requested_at": req.get("requested_at"),
                 "reviewed_at": req.get("reviewed_at"),
