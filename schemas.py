@@ -46,6 +46,8 @@ class UserResponse(BaseModel):
     role: str
     name: Optional[str] = None
     profile_complete: bool = False
+    terms_required: bool = False
+    onboarding_terms_accepted: bool = True
 
 
 # ==================== CUSTOMER ====================
@@ -176,6 +178,22 @@ class RegistrationDeclineRequest(BaseModel):
 
 class FlagDaysUpdate(BaseModel):
     old_product_flag_days: int = Field(..., ge=1, le=3650)
+
+
+class OnboardingTermCreate(BaseModel):
+    text: str = Field(..., min_length=1, max_length=2000)
+
+
+class OnboardingTermUpdate(BaseModel):
+    text: str = Field(..., min_length=1, max_length=2000)
+
+
+class OnboardingTermsReorder(BaseModel):
+    term_ids: List[str] = Field(..., min_length=1)
+
+
+class OnboardingTermsAccept(BaseModel):
+    term_ids: List[str] = Field(..., min_length=1)
 
 
 # ==================== SUPPORT ====================

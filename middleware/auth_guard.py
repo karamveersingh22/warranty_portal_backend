@@ -8,6 +8,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi import HTTPException, Depends
 from typing import Optional
 from services.jwt_service import verify_token
+from database import get_database
 import logging
 
 logger = logging.getLogger(__name__)
@@ -38,12 +39,27 @@ async def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] =
     return payload
 
 
-async def get_current_customer(current_user: dict = Depends(get_current_user)) -> dict:
+async def get_current_customer_identity(current_user: dict = Depends(get_current_user)) -> dict:
     """
     Dependency for customer-only routes.
     """
     if current_user.get("role") != "customer":
         raise HTTPException(status_code=403, detail="Customer access required")
+    return current_user
+
+
+async def get_current_customer(
+    current_user: dict = Depends(get_current_customer_identity),
+    db=Depends(get_database),
+) -> dict:
+    """Customer guard that also enforces mandatory onboarding-term acceptance."""
+    email = (current_user.get("email") or "").lower().strip()
+    customer = await db["customers"].find_one({"email": email})
+    if customer and customer.get("terms_required") and not customer.get("onboarding_terms_accepted"):
+        raise HTTPException(
+            status_code=403,
+            detail="You must accept all terms and conditions before continuing.",
+        )
     return current_user
 
 

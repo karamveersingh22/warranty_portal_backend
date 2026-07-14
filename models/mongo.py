@@ -124,6 +124,10 @@ class CustomerDocument(IndexedDocument):
     city: str = Field(..., min_length=1, max_length=120)
     state: str = Field(..., min_length=1, max_length=120)
     profile_complete: bool = False
+    terms_required: bool = False
+    onboarding_terms_accepted: bool = True
+    onboarding_terms_accepted_at: Optional[datetime] = None
+    onboarding_terms_snapshot: List[Dict[str, Any]] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -431,6 +435,21 @@ class ImportBatchDocument(IndexedDocument):
     )
 
 
+class OnboardingTermDocument(IndexedDocument):
+    collection_name: ClassVar[str] = "onboarding_terms"
+    indexes: ClassVar[List[IndexModel]] = [
+        IndexModel([("order", ASCENDING)], unique=True),
+        IndexModel([("created_at", ASCENDING)]),
+    ]
+
+    text: str = Field(..., min_length=1, max_length=2000)
+    order: int = Field(..., ge=1)
+    created_at: datetime
+    updated_at: datetime
+
+    _normalize_text = field_validator("text", mode="before")(normalize_string_value)
+
+
 DOCUMENT_MODELS = [
     CustomerDocument,
     AdminUserDocument,
@@ -442,6 +461,7 @@ DOCUMENT_MODELS = [
     EnquiryDocument,
     SupportContactDocument,
     ImportBatchDocument,
+    OnboardingTermDocument,
 ]
 
 

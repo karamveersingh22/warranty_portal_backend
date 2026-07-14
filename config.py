@@ -88,4 +88,5 @@ COLLECTIONS = {
     "import_batches": "import_batches",
     "app_settings": "app_settings",
     "support_contacts": "support_contacts",
+    "onboarding_terms": "onboarding_terms",
 }
