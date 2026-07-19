@@ -2,7 +2,8 @@
 Warranty rules routes: /api/rules
 
 Admins can create, update, and deactivate rules. Customers can read active
-rules. Warranty duration values come only from active rules in MongoDB.
+rules only for categories of products registered to them. Warranty duration
+values come only from active rules in MongoDB.
 """
 
 from datetime import datetime
@@ -77,12 +78,32 @@ async def get_warranty_rules(
     current_user: dict = Depends(get_current_user),
     db=Depends(get_database),
 ):
-    """Get active warranty rules, or all rules when requested by an admin."""
+    """Get admin rules or active rules for the customer's registered products."""
     try:
         if include_inactive and current_user.get("role") != "admin":
             raise HTTPException(status_code=403, detail="Admin access required")
 
-        query = {} if include_inactive else {"is_active": True}
+        if current_user.get("role") == "admin":
+            query = {} if include_inactive else {"is_active": True}
+        else:
+            customer_email = (current_user.get("email") or "").lower().strip()
+            owned_categories = await db[COLLECTIONS["registered_products"]].distinct(
+                "category",
+                {"customer_email": customer_email},
+            )
+            owned_categories = sorted({
+                category.strip()
+                for category in owned_categories
+                if isinstance(category, str) and category.strip()
+            })
+            if not owned_categories:
+                return {"rules": [], "total": 0}
+
+            query = {
+                "is_active": True,
+                "$or": [_category_query(category) for category in owned_categories],
+            }
+
         rules = await db[COLLECTIONS["warranty_rules"]].find(query).sort(
             "category", 1
         ).to_list(None)
