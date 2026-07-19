@@ -4,7 +4,7 @@ Admin registration-request review routes: /api/registrations
 Customers submit registration requests (see routes/warranty.py). Admins review
 each request - inspecting buyer, dealer, distributor, item, company dispatch,
 and customer-supplied dealer invoice details. Product age is measured from the
-dealer invoice date to the request date.
+imported company dispatch bill date to the customer buying date.
 (creating the active warranty) or decline (notifying the buyer).
 """
 
@@ -45,11 +45,13 @@ def _address_line(*parts: Optional[str]) -> str:
     return " ".join(p.strip() for p in parts if isinstance(p, str) and p.strip())
 
 
-def _age(requested_at: Optional[datetime], bill_date: Optional[datetime], flag_days: int) -> Dict[str, Any]:
-    if not requested_at or not bill_date:
+def _age(customer_buying_date: Optional[datetime], company_bill_date: Optional[datetime], flag_days: int) -> Dict[str, Any]:
+    """Calculate stock age from company dispatch to customer purchase."""
+    if not customer_buying_date or not company_bill_date:
         return {"days_old": None, "months_old": None, "is_flagged": False}
-    delta = requested_at - bill_date
-    days_old = delta.days
+    buying_day = customer_buying_date.date() if isinstance(customer_buying_date, datetime) else customer_buying_date
+    company_bill_day = company_bill_date.date() if isinstance(company_bill_date, datetime) else company_bill_date
+    days_old = (buying_day - company_bill_day).days
     months_old = round(days_old / 30.0, 1)
     return {
         "days_old": days_old,
@@ -64,7 +66,8 @@ async def _request_detail(db, req: dict, flag_days: int) -> Dict[str, Any]:
         or await db[COLLECTIONS["product_pieces"]].find_one({"piece": req.get("piece")})
     product = product or {}
 
-    age = _age(req.get("requested_at"), req.get("dealer_bill_date"), flag_days)
+    company_bill_date = req.get("bill_date") or product.get("bill_date")
+    age = _age(req.get("dealer_bill_date"), company_bill_date, flag_days)
 
     return {
         "id": str(req.get("_id")),
@@ -112,7 +115,7 @@ async def _request_detail(db, req: dict, flag_days: int) -> Dict[str, Any]:
         },
         "company_dispatch": {
             "bill_number": req.get("bill") or product.get("bill"),
-            "bill_date": req.get("bill_date") or product.get("bill_date"),
+            "bill_date": company_bill_date,
         },
     }
 

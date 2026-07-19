@@ -164,11 +164,11 @@ class WarrantyRegisterRequest(BaseModel):
 
     @field_validator("dealer_bill_date")
     @classmethod
-    def dealer_bill_date_must_be_today(cls, value: date) -> date:
+    def dealer_bill_date_cannot_be_future(cls, value: date) -> date:
         india_timezone = timezone(timedelta(hours=5, minutes=30))
         business_today = datetime.now(india_timezone).date()
-        if value != business_today:
-            raise ValueError("Dealer bill date must be today's date")
+        if value > business_today:
+            raise ValueError("Customer buying date cannot be in the future")
         return value
 
 

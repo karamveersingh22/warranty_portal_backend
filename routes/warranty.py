@@ -152,13 +152,6 @@ async def _register_warranty(request: WarrantyRegisterRequest, current_user: dic
     if not is_warranty_eligible(product):
         raise HTTPException(status_code=400, detail=INELIGIBLE_MESSAGE)
     customer = await _get_customer_or_profile_required(db, email)
-    company_dispatch_date = product.get("bill_date")
-    if company_dispatch_date and dealer_bill_date < company_dispatch_date:
-        raise HTTPException(
-            status_code=400,
-            detail="Dealer bill date cannot be earlier than the company dispatch date for this product. Check the bill date and try again.",
-        )
-
     existing = await db[COLLECTIONS["registered_products"]].find_one({"piece": piece})
     if existing:
         raise HTTPException(status_code=400, detail="This piece is already registered")
