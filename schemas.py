@@ -97,6 +97,11 @@ class CustomerProfileResponse(BaseModel):
         populate_by_name = True
 
 
+class CustomerDeleteRequest(BaseModel):
+    """Require the admin to type the customer's email before permanent deletion."""
+    confirmation_email: EmailStr
+
+
 # ==================== PRODUCT PIECES ====================
 class ProductPieceResponse(BaseModel):
     id: str = Field(alias="_id")

@@ -9,7 +9,7 @@ Customer routes: /api/customer
 from fastapi import APIRouter, HTTPException, Depends, Query
 from database import get_database
 from config import COLLECTIONS
-from schemas import CustomerProfileCreate, CustomerProfileResponse, CustomerRegisterRequest
+from schemas import CustomerDeleteRequest, CustomerProfileCreate, CustomerProfileResponse, CustomerRegisterRequest
 from middleware.auth_guard import get_current_customer, get_current_admin
 from datetime import datetime
 import logging
@@ -289,3 +289,74 @@ async def get_customer_detail(
     except Exception as e:
         logger.error(f"Error in get_customer_detail: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to fetch customer")
+
+
+@router.delete("/{customer_id}")
+async def delete_customer_and_related_data(
+    customer_id: str,
+    body: CustomerDeleteRequest,
+    current_user: dict = Depends(get_current_admin),
+    db = Depends(get_database),
+):
+    """Permanently delete one customer and every customer-owned record."""
+    try:
+        customer_object_id = _validate_object_id(customer_id)
+        customers_collection = db[COLLECTIONS["customers"]]
+        customer = await customers_collection.find_one({"_id": customer_object_id})
+        if not customer:
+            raise HTTPException(status_code=404, detail="Customer not found")
+
+        customer_email = (customer.get("email") or "").lower().strip()
+        if body.confirmation_email.lower().strip() != customer_email:
+            raise HTTPException(
+                status_code=400,
+                detail="Confirmation email does not match the selected customer.",
+            )
+
+        ownership_query = {
+            "$or": [
+                {"customer_id": customer_object_id},
+                {"customer_email": customer_email},
+            ]
+        }
+        deleted_counts = {}
+        for collection_key in (
+            "customer_feedbacks",
+            "enquiries",
+            "registration_requests",
+            "registered_products",
+        ):
+            result = await db[COLLECTIONS[collection_key]].delete_many(ownership_query)
+            deleted_counts[collection_key] = result.deleted_count
+
+        otp_result = await db[COLLECTIONS["otp_sessions"]].delete_many({
+            "email": customer_email,
+            "role": "customer",
+        })
+        deleted_counts["otp_sessions"] = otp_result.deleted_count
+
+        customer_result = await customers_collection.delete_one({"_id": customer_object_id})
+        if customer_result.deleted_count != 1:
+            raise HTTPException(status_code=500, detail="Customer profile could not be deleted")
+        deleted_counts["customers"] = customer_result.deleted_count
+
+        logger.warning(
+            "Admin %s permanently deleted customer %s (%s) and related data: %s",
+            current_user.get("email"),
+            customer_id,
+            customer_email,
+            deleted_counts,
+        )
+        return {
+            "message": "Customer and all related customer data were permanently deleted.",
+            "customer_id": customer_id,
+            "customer_email": customer_email,
+            "deleted_counts": deleted_counts,
+            "product_pieces_preserved": True,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to delete customer %s and related data: %s", customer_id, str(e))
+        raise HTTPException(status_code=500, detail="Failed to delete customer and related data")
