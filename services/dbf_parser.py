@@ -86,7 +86,11 @@ class ImportReport:
     def failed_count(self) -> int:
         return len(self.failed_rows)
 
-    def to_response(self) -> Dict[str, Any]:
+    def to_response(self, failed_rows_limit: Optional[int] = None) -> Dict[str, Any]:
+        failed_rows = self.failed_rows
+        if failed_rows_limit is not None:
+            failed_rows = failed_rows[:failed_rows_limit]
+
         return {
             "booksale_rows": self.booksale_rows,
             "serials_rows": self.serials_rows,
@@ -95,7 +99,8 @@ class ImportReport:
             "updated_count": self.updated_count,
             "ignored_count": self.ignored_count,
             "failed_count": self.failed_count,
-            "failed_rows": self.failed_rows,
+            "failed_rows": failed_rows,
+            "failed_rows_truncated": len(failed_rows) < self.failed_count,
         }
 
 

@@ -23,6 +23,7 @@ from services.dbf_parser import import_dbf_files
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/upload", tags=["upload"])
 IMPORT_JOBS: Dict[str, Dict[str, Any]] = {}
+FAILED_ROW_SAMPLE_LIMIT = 100
 
 
 def _validate_dbf_upload(file: UploadFile, expected_name: str):
@@ -124,7 +125,11 @@ async def _run_dbf_import_job(
 
         report = await import_dbf_files(db, booksale_path, serials_path, progress_callback)
         now = datetime.utcnow()
-        failed_rows = report.failed_rows
+        # A large import can produce enough validation failures to exceed
+        # MongoDB's 16 MB BSON document limit. Keep the accurate failure count,
+        # but persist and return only a bounded diagnostic sample.
+        failed_rows = report.failed_rows[:FAILED_ROW_SAMPLE_LIMIT]
+        failed_rows_truncated = len(failed_rows) < report.failed_count
 
         batch_record = ImportBatchDocument(**{
             "uploaded_by": uploaded_by,
@@ -147,7 +152,9 @@ async def _run_dbf_import_job(
             "ignored_count": report.ignored_count,
             "failed_count": report.failed_count,
             "failed_rows": failed_rows,
-            "report": report.to_response(),
+            "failed_rows_truncated": failed_rows_truncated,
+            "failed_rows_sample_limit": FAILED_ROW_SAMPLE_LIMIT,
+            "report": report.to_response(failed_rows_limit=FAILED_ROW_SAMPLE_LIMIT),
         }
 
         _update_import_job(
