@@ -37,7 +37,8 @@ async def _write_upload_to_temp(file: UploadFile, prefix: str) -> str:
     handle = tempfile.NamedTemporaryFile(delete=False, prefix=prefix, suffix=suffix)
     try:
         with handle:
-            handle.write(await file.read())
+            while chunk := await file.read(1024 * 1024):
+                handle.write(chunk)
         return handle.name
     except Exception:
         try:

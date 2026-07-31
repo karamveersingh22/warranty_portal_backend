@@ -12,7 +12,8 @@ import inspect
 import logging
 
 from dbfread import DBF
-from pymongo.errors import DuplicateKeyError
+from pymongo import InsertOne, UpdateOne
+from pymongo.errors import BulkWriteError
 from pydantic import ValidationError
 
 from models import ProductPieceDocument
@@ -339,43 +340,67 @@ async def upsert_product_pieces(
         "failed_count": 0,
     })
 
-    for index, record in enumerate(product_records, start=1):
-        piece = record.get("piece")
-        try:
-            existing = await collection.find_one({"piece": piece})
+    # A remote MongoDB request per row made DBF imports scale with network
+    # latency. Resolve and write pieces in bounded batches instead. 1000 keeps
+    # both the $in query and the bulk command comfortably below BSON limits.
+    batch_size = 1000
+    for batch_start in range(0, total_records, batch_size):
+        batch = product_records[batch_start:batch_start + batch_size]
+        pieces = list({record.get("piece") for record in batch})
+        existing_documents = await collection.find(
+            {"piece": {"$in": pieces}}
+        ).to_list(length=len(pieces))
+        existing_by_piece = {document["piece"]: document for document in existing_documents}
+
+        operations = []
+        operation_meta = []
+        for record in batch:
+            piece = record.get("piece")
+            existing = existing_by_piece.get(piece)
             if not existing:
-                await collection.insert_one(record)
+                operations.append(InsertOne(record))
+                operation_meta.append(("insert", piece, record))
+                existing_by_piece[piece] = record
+                continue
+
+            incoming_bill_date = record.get("bill_date")
+            existing_bill_date = existing.get("bill_date")
+            is_newer = incoming_bill_date and (
+                not existing_bill_date or incoming_bill_date > existing_bill_date
+            )
+            if is_newer or has_better_traceability(existing, record):
+                record.pop("_id", None)
+                record["updated_at"] = datetime.utcnow()
+                operations.append(UpdateOne({"piece": piece}, {"$set": record}))
+                operation_meta.append(("update", piece, record))
+                existing_by_piece[piece] = record
+            else:
+                report.ignored_count += 1
+
+        failed_operation_indexes = set()
+        if operations:
+            try:
+                await collection.bulk_write(operations, ordered=False)
+            except BulkWriteError as exc:
+                for error in exc.details.get("writeErrors", []):
+                    failed_operation_indexes.add(error.get("index"))
+                    _, piece, record = operation_meta[error.get("index")]
+                    report.failed_rows.append({
+                        "source": "upsert",
+                        "piece": piece,
+                        "reason": error.get("errmsg", "Bulk write failed"),
+                        "record": _safe_failed_record(record),
+                    })
+
+        for operation_index, (kind, _, _) in enumerate(operation_meta):
+            if operation_index in failed_operation_indexes:
+                continue
+            if kind == "insert":
                 report.inserted_count += 1
             else:
-                incoming_bill_date = record.get("bill_date")
-                existing_bill_date = existing.get("bill_date")
-                is_newer = incoming_bill_date and (
-                    not existing_bill_date or incoming_bill_date > existing_bill_date
-                )
-                if is_newer or has_better_traceability(existing, record):
-                    record.pop("_id", None)
-                    record["updated_at"] = datetime.utcnow()
-                    await collection.update_one({"piece": piece}, {"$set": record})
-                    report.updated_count += 1
-                else:
-                    report.ignored_count += 1
+                report.updated_count += 1
 
-        except DuplicateKeyError as exc:
-            report.failed_rows.append({
-                "source": "upsert",
-                "piece": piece,
-                "reason": f"Duplicate piece conflict: {exc.details or str(exc)}",
-                "record": _safe_failed_record(record),
-            })
-        except Exception as exc:
-            report.failed_rows.append({
-                "source": "upsert",
-                "piece": piece,
-                "reason": str(exc),
-                "record": _safe_failed_record(record),
-            })
-            logger.exception("Failed to upsert piece %s: %s", piece, exc)
-
+        index = batch_start + len(batch)
         if index % 250 == 0 or index == total_records:
             await _send_progress(progress_callback, {
                 "phase": "database_import",
