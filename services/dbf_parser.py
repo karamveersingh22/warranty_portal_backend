@@ -218,7 +218,6 @@ def parse_serials_dbf(file_path: str) -> Tuple[List[dict], List[Dict[str, Any]]]
                 "size": size,
                 "piece": _read_text_field(record, "piece"),
                 "bill_date": _dbf_date_to_datetime(_read_field(record, "date")),
-                "bill": _read_text_field(record, "bill"),
                 "main_key": _read_text_field(record, "main_key"),
                 "describe": _read_text_field(record, "describe"),
             })
@@ -257,7 +256,7 @@ def join_records(
             "category": serial_record.get("category", ""),
             "size": serial_record.get("size", ""),
             "describe": serial_record.get("describe", ""),
-            "bill": booksale_record.get("bill") or serial_record.get("bill") or "",
+            "bill": booksale_record.get("bill") or "",
             "bill_date": bill_date,
             "main_key": main_key,
             "has_booksale_match": bool(booksale_record),
