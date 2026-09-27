@@ -245,8 +245,19 @@ def join_records(
     for serial_record in serials:
         row_number = serial_record.get("row_number")
         main_key = serial_record.get("main_key", "")
-        booksale_record = booksale_by_main_key.get(main_key, {})
-        bill_date = booksale_record.get("bill_date") or serial_record.get("bill_date")
+        booksale_record = booksale_by_main_key.get(main_key)
+        bill_date = booksale_record.get("bill_date") if booksale_record else serial_record.get("bill_date")
+
+        # Check if main_key has a matching booksale record
+        if not booksale_record:
+            failed_rows.append({
+                "source": "serials",
+                "row_number": row_number,
+                "piece": serial_record.get("piece", ""),
+                "reason": f"No matching record found in SALE1.dbf for MAIN_KEY '{main_key}'. This piece cannot be linked to a company dispatch bill.",
+                "record": _safe_failed_record(serial_record),
+            })
+            continue
 
         product_record = {
             "piece": serial_record.get("piece", ""),
@@ -259,7 +270,7 @@ def join_records(
             "bill": booksale_record.get("bill") or "",
             "bill_date": bill_date,
             "main_key": main_key,
-            "has_booksale_match": bool(booksale_record),
+            "has_booksale_match": True,
             "distributor_code": booksale_record.get("distributor_code"),
             "distributor_name": booksale_record.get("distributor_name", ""),
             "distributor_add1": booksale_record.get("distributor_add1", ""),
@@ -280,11 +291,29 @@ def join_records(
             product = ProductPieceDocument(**product_record)
             joined_records.append(product.to_mongo())
         except ValidationError as exc:
+            error = exc.errors()[0] if exc.errors() else {}
+            field = error.get("loc", ["unknown"])[0] if error.get("loc") else "unknown"
+            msg = error.get("msg", str(exc))
+            
+            field_names = {
+                "piece": "Piece Number",
+                "i_code": "Item Code", 
+                "item_name": "Item Name",
+                "bill": "Company Dispatch Bill",
+                "bill_date": "Bill Date",
+                "main_key": "Main Key (Join ID)",
+                "category": "Product Category",
+                "product_type": "Product Type",
+                "size": "Size",
+            }
+            friendly_field = field_names.get(field, field)
+            reason = f"Validation failed for '{friendly_field}': {msg}"
+            
             failed_rows.append({
                 "source": "serials",
                 "row_number": row_number,
                 "piece": product_record.get("piece"),
-                "reason": exc.errors()[0]["msg"] if exc.errors() else str(exc),
+                "reason": reason,
                 "record": _safe_failed_record(product_record),
             })
 
